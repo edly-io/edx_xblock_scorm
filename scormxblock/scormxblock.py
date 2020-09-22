@@ -177,8 +177,8 @@ class ScormXBlock(XBlock):
                 os.remove(temporary_path)
 
             self.set_fields_xblock(path_to_file)
-
-        return Response(json.dumps({'result': 'success'}), content_type='application/json')
+        # changes made for juniper (python 3.5)
+        return Response(json.dumps({'result': 'success'}), content_type='application/json', charset='utf8')
 
     @XBlock.json_handler
     def scorm_get_value(self, data, suffix=''):
@@ -332,7 +332,11 @@ class ScormXBlock(XBlock):
         """
         block_size = 8 * 1024
         sha1 = hashlib.sha1()
-        for block in iter(partial(file_descriptor.read, block_size), ''):
+        # changes made for juniper (python 3.5)
+        while True:
+            block = file_descriptor.read(block_size)
+            if not block:
+                break
             sha1.update(block)
         file_descriptor.seek(0)
         return sha1.hexdigest()
