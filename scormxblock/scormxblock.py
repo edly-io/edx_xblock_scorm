@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import hashlib
 import re
@@ -27,8 +28,8 @@ _ = lambda text: text
 
 log = logging.getLogger(__name__)
 
-SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, 'scorm')
-SCORM_URL = os.path.join(settings.MEDIA_URL, 'scorm')
+SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, 'scormxblockmedia')
+SCORM_URL = os.path.join(settings.MEDIA_URL, 'scormxblockmedia')
 
 
 class ScormXBlock(XBlock):
@@ -130,6 +131,22 @@ class ScormXBlock(XBlock):
         frag = Fragment(html)
         return frag
 
+    def _delete_local_storage(self):
+        path = self.local_storage_path
+        if os.path.exists(path):
+            shutil.rmtree(path)
+
+    @property
+    def local_storage_path(self):
+        return os.path.join(SCORM_ROOT, self.location.block_id)
+
+    @property
+    def s3_storage(self):
+        return 'S3' in default_storage.__class__.__name__
+
+    def get_remote_path(self, local_path):
+        return ''.join([self._file_storage_path(), local_path.replace(self.local_storage_path, '')])
+
     @XBlock.handler
     def studio_submit(self, request, suffix=''):
         self.display_name = request.params['display_name']
@@ -144,41 +161,75 @@ class ScormXBlock(XBlock):
             # First, save scorm file in the storage for mobile clients
             self.scorm_file_meta['sha1'] = self.get_sha1(scorm_file)
             self.scorm_file_meta['name'] = scorm_file.name
-            self.scorm_file_meta['path'] = path = self._file_storage_path()
+            self.scorm_file_meta['path'] = self._file_storage_path()
             self.scorm_file_meta['last_updated'] = timezone.now().strftime(DateTime.DATETIME_FORMAT)
+            self.scorm_file_meta['size'] = scorm_file.size
 
-            if default_storage.exists(path):
-                log.info('Removing previously uploaded "{}"'.format(path))
-                default_storage.delete(path)
+            self._unpack_files(scorm_file)
+            self.set_fields_xblock()
+            if self.s3_storage:
+                self._store_unziped_files_to_s3()
 
-            default_storage.save(path, File(scorm_file))
-            self.scorm_file_meta['size'] = default_storage.size(path)
-            log.info('"{}" file stored at "{}"'.format(scorm_file, path))
-
-            # Check whether SCORM_ROOT exists
-            if not os.path.exists(SCORM_ROOT):
-                os.mkdir(SCORM_ROOT)
-
-            # Now unpack it into SCORM_ROOT to serve to students later
-            path_to_file = os.path.join(SCORM_ROOT, self.location.block_id)
-
-            if os.path.exists(path_to_file):
-                shutil.rmtree(path_to_file)
-
-            if hasattr(scorm_file, 'temporary_file_path'):
-                os.system('unzip {} -d {}'.format(scorm_file.temporary_file_path(), path_to_file))
-            else:
-                temporary_path = os.path.join(SCORM_ROOT, scorm_file.name)
-                temporary_zip = open(temporary_path, 'wb')
-                scorm_file.open()
-                temporary_zip.write(scorm_file.read())
-                temporary_zip.close()
-                os.system('unzip {} -d {}'.format(temporary_path, path_to_file))
-                os.remove(temporary_path)
-
-            self.set_fields_xblock(path_to_file)
         # changes made for juniper (python 3.5)
         return Response(json.dumps({'result': 'success'}), content_type='application/json', charset='utf8')
+
+    def _unpack_files(self, scorm_file):
+        """
+        Unpacks zip file using unzip system utility
+        """
+        # Now unpack it into SCORM_ROOT to serve to students later
+        self._delete_local_storage()
+        local_path = self.local_storage_path
+        os.makedirs(local_path)
+
+        if hasattr(scorm_file, 'temporary_file_path'):
+            os.system('unzip {} -d {}'.format(scorm_file.temporary_file_path(), local_path))
+        else:
+            temporary_path = os.path.join(SCORM_ROOT, scorm_file.name)
+            temporary_zip = open(temporary_path, 'wb')
+            scorm_file.open()
+            temporary_zip.write(scorm_file.read())
+            temporary_zip.close()
+            os.system('unzip {} -d {}'.format(temporary_path, local_path))
+            os.remove(temporary_path)
+
+    def _upload_file(self, file_path):
+        path = self.get_remote_path(file_path)
+        with open(file_path) as content_file:
+            default_storage.save(path, content_file)
+        log.info('S3: "{}" file stored at "{}"'.format(file_path, path))
+
+    def _delete_existing_files(self, path):
+        """
+        Recusively delete all files under given path
+        """
+        dir_names, file_names = default_storage.listdir(path)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1000) as executor:
+            tracker_futures = []
+            for file_name in file_names:
+                file_path = '/'.join([path, file_name])
+                tracker_futures.append(executor.submit(default_storage.delete, file_path))
+                log.info('S3: "{}" file deleted'.format(file_path))
+
+        for dir_name in dir_names:
+            dir_path = '/'.join([path, dir_name])
+            self._delete_existing_files(dir_path)
+
+    def _store_unziped_files_to_s3(self):
+        """
+        """
+        self._delete_existing_files(self._file_storage_path())
+        local_path = self.local_storage_path
+        file_paths = []
+        for path, subdirs, files in os.walk(local_path):
+            for name in files:
+                file_paths.append(os.path.join(path, name))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1000) as executor:
+            tracker_futures = []
+            for file_path in file_paths:
+                tracker_futures.append(executor.submit(self._upload_file, file_path))
+
 
     @XBlock.json_handler
     def scorm_get_value(self, data, suffix=''):
@@ -276,15 +327,16 @@ class ScormXBlock(XBlock):
         template = Template(template_str)
         return template.render(Context(context))
 
-    def set_fields_xblock(self, path_to_file):
+    def set_fields_xblock(self):
+
         self.path_index_page = 'index.html'
         try:
-            tree = ET.parse('{}/imsmanifest.xml'.format(path_to_file))
+            tree = ET.parse('{}/imsmanifest.xml'.format(self.local_storage_path))
         except IOError:
             pass
         else:
             namespace = ''
-            for node in [node for _, node in ET.iterparse('{}/imsmanifest.xml'.format(path_to_file), events=['start-ns'])]:
+            for node in [node for _, node in ET.iterparse('{}/imsmanifest.xml'.format(self.local_storage_path), events=['start-ns'])]:
                 if node[0] == '':
                     namespace = node[1]
                     break
@@ -317,11 +369,8 @@ class ScormXBlock(XBlock):
         Get file path of storage.
         """
         path = (
-            '{loc.org}/{loc.course}/{loc.block_type}/{loc.block_id}'
-            '/{sha1}{ext}'.format(
+            'scormxblockmedia/{loc.org}/{loc.course}/{loc.block_id}'.format(
                 loc=self.location,
-                sha1=self.scorm_file_meta['sha1'],
-                ext=os.path.splitext(self.scorm_file_meta['name'])[1]
             )
         )
         return path
