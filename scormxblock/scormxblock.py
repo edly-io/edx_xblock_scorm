@@ -153,7 +153,7 @@ class ScormXBlock(XBlock):
         self.width = request.params['width']
         self.height = request.params['height']
         self.has_score = request.params['has_score']
-        self.icon_class = 'problem' if self.has_score == 'True' else 'video'
+        self.icon_class = 'problem' if self.has_score else 'video'
 
         if hasattr(request.params['file'], 'file'):
             scorm_file = request.params['file'].file
@@ -309,10 +309,8 @@ class ScormXBlock(XBlock):
     def get_context_student(self):
         scorm_file_path = ''
         if self.scorm_file:
-            scheme = 'https' if settings.HTTPS == 'on' else 'http'
-            scorm_file_path = '{}://{}{}'.format(
-                scheme,
-                configuration_helpers.get_value('site_domain', settings.ENV_TOKENS.get('LMS_BASE')),
+            scorm_file_path = '{}{}'.format(
+                configuration_helpers.get_value('LMS_ROOT_URL', settings.LMS_ROOT_URL),
                 self.scorm_file
             )
 
@@ -349,7 +347,7 @@ class ScormXBlock(XBlock):
                 resource = root.find('resources/resource')
                 schemaversion = root.find('metadata/schemaversion')
 
-            if resource:
+            if resource is not None:
                 self.path_index_page = resource.get('href')
             if (schemaversion is not None) and (re.match('^1.2$', schemaversion.text) is None):
                 self.version_scorm = 'SCORM_2004'
