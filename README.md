@@ -48,4 +48,4 @@ Testing
 
 Assuming `scormxblock` is installed as above, you can run tests like so:
 
-    $ paver test_system -s lms -t scormxblock
+    $ pytest --pyargs scormxblock
