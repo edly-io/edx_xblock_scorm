@@ -8,6 +8,7 @@ import pkg_resources
 import shutil
 import xml.etree.ElementTree as ET
 
+from completion import waffle as completion_waffle
 from functools import partial
 from django.conf import settings
 from django.core.files import File
@@ -17,6 +18,7 @@ from django.utils import timezone
 from webob import Response
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 
+from xblock.completable import XBlockCompletionMode
 from xblock.core import XBlock
 from xblock.fields import Scope, String, Float, Boolean, Dict, DateTime, Integer
 from xblock.fragment import Fragment
@@ -33,6 +35,8 @@ SCORM_URL = os.path.join(settings.MEDIA_URL, 'scormxblockmedia')
 
 
 class ScormXBlock(XBlock):
+    has_custom_completion = True
+    completion_mode = XBlockCompletionMode.COMPLETABLE
 
     display_name = String(
         display_name=_("Display Name"),
@@ -289,6 +293,7 @@ class ScormXBlock(XBlock):
                     'value': self.lesson_score,
                     'max_value': self.weight,
                 })
+        self.publish_completion()
 
     def max_score(self):
         """
@@ -412,3 +417,25 @@ class ScormXBlock(XBlock):
                 </vertical_demo>
              """),
         ]
+
+    def publish_completion(self):
+        """
+        Mark scorm xbloxk as completed if user has completed the scorm course unit.
+        it will work along with the edX completion tool: https://github.com/edx/completion
+        """
+        if not completion_waffle.waffle().is_enabled(completion_waffle.ENABLE_COMPLETION_TRACKING):
+            return
+        if XBlockCompletionMode.get_mode(self) != XBlockCompletionMode.COMPLETABLE:
+            return
+        completion_value = 0.0
+        if not self.has_score:
+            # component does not have any score
+            if self.get_completion_status() == "completed":
+                completion_value = 1.0
+        else:
+            if self.get_completion_status() in ["passed", "failed"]:
+                completion_value = 1.0
+        data = {
+            "completion": completion_value
+        }
+        self.runtime.publish(self, "completion", data)
