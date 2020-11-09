@@ -17,10 +17,10 @@ from django.utils import timezone
 from webob import Response
 from openedx.core.djangoapps.site_configuration import helpers as configuration_helpers
 
+from xblock.completable import CompletableXBlockMixin
 from xblock.core import XBlock
 from xblock.fields import Scope, String, Float, Boolean, Dict, DateTime, Integer
 from xblock.fragment import Fragment
-
 
 
 # Make '_' a no-op so we can scrape strings
@@ -32,8 +32,7 @@ SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, 'scormxblockmedia')
 SCORM_URL = os.path.join(settings.MEDIA_URL, 'scormxblockmedia')
 
 
-class ScormXBlock(XBlock):
-
+class ScormXBlock(XBlock, CompletableXBlockMixin):
     display_name = String(
         display_name=_("Display Name"),
         help=_("Display name for this module"),
@@ -268,7 +267,13 @@ class ScormXBlock(XBlock):
         else:
             self.data_scorm[name] = data.get('value', '')
 
-        context.update({"completion_status": self.get_completion_status()})
+        completion_status = self.get_completion_status()
+        context.update({"completion_status": completion_status})
+
+        # publish completion
+        if completion_status in ["passed", "failed", "completed"]:
+            self.emit_completion(1.0)
+
         return context
 
     def publish_grade(self):
