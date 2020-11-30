@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 
 SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, "scormxblockmedia")
 SCORM_URL = os.path.join(settings.MEDIA_URL, "scormxblockmedia")
+MAX_WORKERS = 10
 
 
 class ScormXBlock(XBlock, CompletableXBlockMixin):
@@ -155,6 +156,8 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             self.set_fields_xblock()
             if self.s3_storage:
                 self._store_unziped_files_to_s3()
+                # Removed locally unzipped files once we have store them on S3
+                self._delete_local_storage()
 
         # changes made for juniper (python 3.5)
         return Response(
@@ -196,7 +199,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         Recusively delete all files under given path
         """
         dir_names, file_names = default_storage.listdir(path)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1000) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             tracker_futures = []
             for file_name in file_names:
                 file_path = "/".join([path, file_name])
@@ -218,7 +221,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             for name in files:
                 file_paths.append(os.path.join(path, name))
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1000) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             tracker_futures = []
             for file_path in file_paths:
                 tracker_futures.append(executor.submit(self._upload_file, file_path))
