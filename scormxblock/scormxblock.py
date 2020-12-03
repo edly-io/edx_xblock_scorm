@@ -1,6 +1,7 @@
 import concurrent.futures
 import json
 import hashlib
+import mimetypes
 import re
 import os
 import logging
@@ -28,7 +29,7 @@ log = logging.getLogger(__name__)
 
 SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, "scormxblockmedia")
 SCORM_URL = os.path.join(settings.MEDIA_URL, "scormxblockmedia")
-MAX_WORKERS = 10
+MAX_WORKERS = getattr(settings, "THREADPOOLEXECUTOR_MAX_WORKERS", 10)
 
 
 class ScormXBlock(XBlock, CompletableXBlockMixin):
@@ -188,7 +189,23 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             os.system("unzip {} -d {}".format(temporary_path, local_path))
             os.remove(temporary_path)
 
+    def _fix_content_type(self, file_path):
+        """
+        Sometimes content type of file returned by mimetypes module is bytes object instead of string
+        which fails content type validation of boto3 and boto3 would not upload file instead throws
+        `botocore.exceptions.ParamValidationError: Parameter validation failed:`
+        This method fixes such content types by changing their type from bytes to string
+        """
+        _content_type, __ = mimetypes.guess_type(file_path)
+        try:
+            str_type = _content_type.decode("utf-8")
+            ext = file_path.split(".")[-1]
+            mimetypes.add_type(str_type, "." + ext)
+        except (UnicodeDecodeError, AttributeError):
+            pass
+
     def _upload_file(self, file_path):
+        self._fix_content_type(file_path)
         path = self.get_remote_path(file_path)
         with open(file_path, "rb") as content_file:
             default_storage.save(path, content_file)
@@ -222,9 +239,18 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
                 file_paths.append(os.path.join(path, name))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            tracker_futures = []
-            for file_path in file_paths:
-                tracker_futures.append(executor.submit(self._upload_file, file_path))
+            tracker_futures = {
+                executor.submit(self._upload_file, file_path): file_path
+                for file_path in file_paths
+            }
+            for future in concurrent.futures.as_completed(tracker_futures):
+                file_path = tracker_futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    log.info(
+                        "S3: upload of %r generated an exception: %s" % (file_path, exc)
+                    )
 
     @XBlock.json_handler
     def scorm_get_value(self, data, suffix=""):
