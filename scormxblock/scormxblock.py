@@ -287,7 +287,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
                 self.publish_grade()
                 context.update({"lesson_score": self.lesson_score})
         elif name in ["cmi.core.score.raw", "cmi.score.raw"] and self.has_score:
-            self.lesson_score = int(data.get("value", 0)) / 100.0
+            self.lesson_score =  round(float(data.get("value", 0)) / 100.0, 2)
             self.publish_grade()
             context.update({"lesson_score": self.lesson_score})
         else:
