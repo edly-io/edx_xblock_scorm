@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, "scormxblockmedia")
 SCORM_URL = os.path.join(settings.MEDIA_URL, "scormxblockmedia")
 MAX_WORKERS = getattr(settings, "THREADPOOLEXECUTOR_MAX_WORKERS", 10)
+ENABLE_PUBLISH_FAILED_SCORM_SCORE = settings.FEATURES.get('ENABLE_PUBLISH_FAILED_SCORM_SCORE', False)
 
 
 class ScormXBlock(XBlock, CompletableXBlockMixin):
@@ -303,9 +304,10 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         return context
 
     def publish_grade(self):
-        if self.lesson_status == "failed" or (
-            self.version_scorm == "SCORM_2004"
-            and self.success_status in ["failed", "unknown"]
+        if not ENABLE_PUBLISH_FAILED_SCORM_SCORE and (
+            self.lesson_status == "failed" or (
+                self.version_scorm == "SCORM_2004" and self.success_status in ["failed", "unknown"]
+            )
         ):
             self.runtime.publish(
                 self,
