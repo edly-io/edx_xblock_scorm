@@ -107,4 +107,16 @@ function ScormXBlock(runtime, element, settings) {
       $scormBlock.toggleClass("full-screen-scorm");
     });
   });
+
+  // When the user clicks on the button, open the modal
+  $('.scormModalBtn').on ("click", function(event) {
+    var modal_id = '#' + $(event.currentTarget).data('scorm-id') + '_scormModal'
+    $(modal_id).show();
+  });
+
+  // When the user clicks on <span> (x), close the modal
+  $('.scormModalClose').on ("click", function(event) {
+    var modal_id = '#' + $(event.currentTarget).data('scorm-id') + '_scormModal'
+    $(modal_id).hide();
+  });
 }

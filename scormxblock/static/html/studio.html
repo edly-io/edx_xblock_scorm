@@ -43,6 +43,17 @@
       </div>
       <span class="tip setting-help">{% trans field_height.help %}</span>
     </li>
+    <li class="field comp-setting-entry is-set">
+      <div class="wrapper-comp-setting">
+        <label class="label setting-label" for="open_in_pop_up">{% trans field_open_in_pop_up.display_name %}</label>
+        <select name="open_in_pop_up" id="open_in_pop_up">
+          {% for option in field_open_in_pop_up.values %}
+          <option value="{{ option.value }}" {% if option.value == scorm_xblock.open_in_pop_up %}selected{% endif %}>{% trans option.display_name %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <span class="tip setting-help">{% trans field_open_in_pop_up.help %}</span>
+    </li>
 
   </ul>
   <div class="xblock-actions">

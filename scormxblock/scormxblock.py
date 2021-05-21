@@ -82,6 +82,15 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         default=450,
         scope=Scope.settings,
     )
+    open_in_pop_up = Boolean(
+        display_name=_("Open in Pop-up"),
+        help=_(
+            "Select True if you want learners to click on 'view course' button and then open scorm content in a pop-up window."
+            "Select False if you want the scorm content to open in an IFrame in the current page. "
+        ),
+        default=False,
+        scope=Scope.settings
+    )
 
     has_author_view = True
 
@@ -139,6 +148,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         self.display_name = request.params["display_name"]
         self.width = request.params["width"]
         self.height = request.params["height"]
+        self.open_in_pop_up = request.params["open_in_pop_up"]
         self.has_score = request.params["has_score"]
         self.icon_class = "problem" if self.has_score else "video"
 
@@ -340,6 +350,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             "field_has_score": self.fields["has_score"],
             "field_width": self.fields["width"],
             "field_height": self.fields["height"],
+            "field_open_in_pop_up": self.fields["open_in_pop_up"],
             "scorm_xblock": self,
         }
 
