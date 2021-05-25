@@ -9,12 +9,14 @@ function ScormStudioXBlock(runtime, element) {
     var has_score = $(element).find('select[name=has_score]').val();
     var width = $(element).find('input[name=width]').val();
     var height = $(element).find('input[name=height]').val();
+    var open_in_pop_up = $(element).find('select[name=open_in_pop_up]').val();
 
     form_data.append('file', file_data);
     form_data.append('display_name', display_name);
     form_data.append('has_score', has_score);
     form_data.append('width', width);
     form_data.append('height', height);
+    form_data.append('open_in_pop_up', open_in_pop_up);
     runtime.notify('save', {state: 'start'});
 
     $.ajax({
