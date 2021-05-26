@@ -2,6 +2,9 @@
 
 .scormxblock_block .scorm_object {
     border: none;
+    max-width: 100%;
+    margin: 0 auto;
+    display: block;
 }
 
 .scormxblock_block span.setting-input-file {
@@ -64,6 +67,11 @@
 
 /* CSS for Scorm Modal */
 
+.modal,
+.modal * {
+    box-sizing: border-box;
+}
+
 .modal {
     display: none;
     position: fixed;
@@ -73,11 +81,16 @@
     width: 100%;
     height: 100%;
     overflow: auto;
+    z-index: 1001;
     background-color: rgba(0, 0, 0, 0.4);
 }
 
-.scorm-modal {
-    z-index: 1001;
+.scorm-modal-wrapper {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
 }
 
 .scorm-modal-content {
@@ -85,7 +98,7 @@
     margin: 5% auto;
     padding: 2rem;
     border: .1rem solid #888;
-    width: 80%;
+    max-width: calc(100% - 30px);
 }
 
 .close {
