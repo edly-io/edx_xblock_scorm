@@ -83,7 +83,6 @@ function ScormXBlock(runtime, element, settings) {
       type: "POST",
       url: handlerUrl,
       data: JSON.stringify({'name': cmi_element, 'value': value}),
-      async: false,
       success: function(response){
         if (typeof response.lesson_score != "undefined"){
           $(".lesson_score", element).html(response.lesson_score);
