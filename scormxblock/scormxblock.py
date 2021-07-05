@@ -4,6 +4,7 @@ import hashlib
 import mimetypes
 import re
 import os
+import stat
 import logging
 import pkg_resources
 import shutil
@@ -165,6 +166,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             self.scorm_file_meta["size"] = scorm_file.size
 
             self._unpack_files(scorm_file)
+            self.update_subdir_permissions()
             self.set_fields_xblock()
             if self.s3_storage:
                 self._store_unziped_files_to_s3()
@@ -177,6 +179,19 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             content_type="application/json",
             charset="utf8",
         )
+
+    def update_subdir_permissions(self):
+        """
+        Extends existing permissions of all the the sub-directories with the Owner Execute permission (S_IXUSR).
+
+        All sub-directories of the scorm-package must have executable permissions for the Directory Owner otherwise
+        Studio will raise Permission Denied error on scorm package upload.
+        """
+        for path, subdirs, files in os.walk(self.local_storage_path):
+            for name in subdirs:
+                dir_path = os.path.join(path, name)
+                st = os.stat(dir_path)
+                os.chmod(dir_path, st.st_mode | stat.S_IXUSR)
 
     def _unpack_files(self, scorm_file):
         """
