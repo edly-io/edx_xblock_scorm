@@ -95,6 +95,8 @@ function ScormXBlock(runtime, element, settings) {
   };
 
   $(function ($) {
+    $('.scorm_object').attr('src', `${window.location.origin}${settings.scorm_path}`);
+    
     if (settings.version_scorm == 'SCORM_12') {
       API = new SCORM_12_API();
     } else {
