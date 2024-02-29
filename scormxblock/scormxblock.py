@@ -106,7 +106,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         frag = Fragment(template)
         frag.add_css(self.resource_string("static/css/scormxblock.css"))
         frag.add_javascript(self.resource_string("static/js/src/scormxblock.js"))
-        settings = {"version_scorm": self.version_scorm}
+        settings = {"version_scorm": self.version_scorm, "scorm_path": context_html["scorm_file_path"]}
         frag.initialize_js("ScormXBlock", json_args=settings)
         return frag
 
@@ -372,10 +372,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
     def get_context_student(self):
         scorm_file_path = ""
         if self.scorm_file:
-            scorm_file_path = "{}{}".format(
-                configuration_helpers.get_value("LMS_ROOT_URL", settings.LMS_ROOT_URL),
-                self.scorm_file,
-            )
+            scorm_file_path = self.scorm_file
 
         return {
             "scorm_file_path": scorm_file_path,
