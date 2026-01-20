@@ -195,25 +195,30 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
 
     def _unpack_files(self, scorm_file):
         """
-        Unpacks zip file using unzip system utility
+        Unpacks zip file using Python zipfile module
         """
+        import zipfile
         # Now unpack it into SCORM_ROOT to serve to students later
         self._delete_local_storage()
         local_path = self.local_storage_path
-        os.makedirs(local_path)
+        os.makedirs(local_path, exist_ok=True)
 
-        if hasattr(scorm_file, "temporary_file_path"):
-            os.system(
-                "unzip {} -d {}".format(scorm_file.temporary_file_path(), local_path)
-            )
-        else:
-            temporary_path = os.path.join(SCORM_ROOT, scorm_file.name)
-            temporary_zip = open(temporary_path, "wb")
-            scorm_file.open()
-            temporary_zip.write(scorm_file.read())
-            temporary_zip.close()
-            os.system("unzip {} -d {}".format(temporary_path, local_path))
-            os.remove(temporary_path)
+        try:
+            if hasattr(scorm_file, "temporary_file_path"):
+                with zipfile.ZipFile(scorm_file.temporary_file_path(), 'r') as zip_ref:
+                    zip_ref.extractall(local_path)
+            else:
+                temporary_path = os.path.join(SCORM_ROOT, scorm_file.name)
+                with open(temporary_path, "wb") as temporary_zip:
+                    scorm_file.open()
+                    temporary_zip.write(scorm_file.read())
+                with zipfile.ZipFile(temporary_path, 'r') as zip_ref:
+                    zip_ref.extractall(local_path)
+                os.remove(temporary_path)
+            log.info("SCORM unpack completed successfully for block %s", self.location)
+        except Exception as e:
+            log.error("Error unpacking SCORM file for block %s: %s", self.location, str(e))
+            raise
 
     def _fix_content_type(self, file_path):
         """
