@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import hashlib
 import mimetypes
+import posixpath
 import re
 import os
 import stat
@@ -350,7 +351,12 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         """
         if not suffix:
             return Response(status=404)
-        file_path = os.path.join(self._file_storage_path(), suffix)
+        # Sanitize: strip leading slashes (prevents os.path.join from discarding
+        # the base path) and normalize to collapse ".." path traversal sequences.
+        base = self._file_storage_path()
+        file_path = posixpath.normpath(posixpath.join(base, suffix.lstrip('/')))
+        if not file_path.startswith(base + '/'):
+            return Response(status=403)
         try:
             with default_storage.open(file_path) as f:
                 content = f.read()
