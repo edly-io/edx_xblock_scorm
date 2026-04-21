@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import hashlib
 import mimetypes
+import posixpath
 import re
 import os
 import stat
@@ -333,6 +334,37 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
 
         return context
 
+    @XBlock.handler
+    def assets_proxy(self, request, suffix=''):
+        """
+        Proxy SCORM assets from default_storage (S3) through the LMS domain.
+
+        When S3 storage is active, SCORM files live on S3 and the local copy is
+        deleted after upload. Loading the iframe directly from an S3 URL would make
+        it cross-origin, breaking window.parent.API so SCORM cannot report scores.
+
+        This handler streams any file within the SCORM package from default_storage
+        back to the browser under the LMS domain, preserving same-origin access.
+
+        The suffix is the relative path within the SCORM package root, e.g.:
+            "index.html", "scormdriver/indexAPI.html", "scripts/api.js"
+        """
+        if not suffix:
+            return Response(status=404)
+        # Sanitize: strip leading slashes (prevents os.path.join from discarding
+        # the base path) and normalize to collapse ".." path traversal sequences.
+        base = self._file_storage_path()
+        file_path = posixpath.normpath(posixpath.join(base, suffix.lstrip('/')))
+        if not file_path.startswith(base + '/'):
+            return Response(status=403)
+        try:
+            with default_storage.open(file_path) as f:
+                content = f.read()
+        except Exception:
+            return Response(status=404)
+        content_type, _ = mimetypes.guess_type(suffix)
+        return Response(content, content_type=content_type or 'application/octet-stream')
+
     def publish_grade(self):
         if not ENABLE_PUBLISH_FAILED_SCORM_SCORE and (
             self.lesson_status == "failed" or (
@@ -377,7 +409,16 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
     def get_context_student(self):
         scorm_file_path = ""
         if self.scorm_file:
-            scorm_file_path = self.scorm_file
+            if self.s3_storage:
+                # When S3 is active, proxy assets through the LMS handler so the
+                # iframe stays same-origin and window.parent.API remains accessible
+                # for SCORM score/completion reporting.
+                from urllib.parse import urlparse
+                proxy_base = self.runtime.handler_url(self, 'assets_proxy').rstrip('?/')
+                proxy_path = urlparse(proxy_base).path
+                scorm_file_path = "{}/{}".format(proxy_path, self.path_index_page)
+            else:
+                scorm_file_path = self.scorm_file
 
         return {
             "scorm_file_path": scorm_file_path,
