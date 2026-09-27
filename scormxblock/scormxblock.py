@@ -353,17 +353,33 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
             return Response(status=404)
         # Sanitize: strip leading slashes (prevents os.path.join from discarding
         # the base path) and normalize to collapse ".." path traversal sequences.
-        base = self._file_storage_path()
-        file_path = posixpath.normpath(posixpath.join(base, suffix.lstrip('/')))
-        if not file_path.startswith(base + '/'):
-            return Response(status=403)
-        try:
-            with default_storage.open(file_path) as f:
-                content = f.read()
-        except Exception:
-            return Response(status=404)
-        content_type, _ = mimetypes.guess_type(suffix)
-        return Response(content, content_type=content_type or 'application/octet-stream')
+        for base in self._asset_base_paths():
+            file_path = posixpath.normpath(posixpath.join(base, suffix.lstrip('/')))
+            if not file_path.startswith(base + '/'):
+                return Response(status=403)
+            try:
+                with default_storage.open(file_path) as f:
+                    content = f.read()
+            except Exception:
+                continue
+            content_type, _ = mimetypes.guess_type(suffix)
+            return Response(content, content_type=content_type or 'application/octet-stream')
+        return Response(status=404)
+
+    def _asset_base_paths(self):
+        """
+        Candidate roots for the extracted package, most authoritative first.
+
+        ``scorm_file_meta['path']`` is where ``studio_submit`` actually wrote
+        the files; ``_file_storage_path()`` is derived from the block's current
+        location and is the fallback.
+        """
+        recorded = (self.scorm_file_meta or {}).get('path')
+        computed = self._file_storage_path()
+        paths = [recorded.rstrip('/')] if recorded else []
+        if computed not in paths:
+            paths.append(computed)
+        return paths
 
     def publish_grade(self):
         if not ENABLE_PUBLISH_FAILED_SCORM_SCORE and (
