@@ -376,7 +376,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         """
         recorded = (self.scorm_file_meta or {}).get('path')
         computed = self._file_storage_path()
-        paths = [recorded.rstrip('/')] if recorded else []
+        paths = [posixpath.normpath(recorded)] if recorded else []
         if computed not in paths:
             paths.append(computed)
         return paths
