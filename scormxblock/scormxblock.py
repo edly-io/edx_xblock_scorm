@@ -29,7 +29,8 @@ _ = lambda text: text
 
 log = logging.getLogger(__name__)
 
-SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, "scormxblockmedia")
+SCORM_STORAGE_ROOT = "scormxblockmedia"
+SCORM_ROOT = os.path.join(settings.MEDIA_ROOT, SCORM_STORAGE_ROOT)
 SCORM_URL = os.path.join(settings.MEDIA_URL, "scormxblockmedia")
 MAX_WORKERS = getattr(settings, "THREADPOOLEXECUTOR_MAX_WORKERS", 10)
 ENABLE_PUBLISH_FAILED_SCORM_SCORE = settings.FEATURES.get('ENABLE_PUBLISH_FAILED_SCORM_SCORE', False)
@@ -356,7 +357,7 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         for base in self._asset_base_paths():
             file_path = posixpath.normpath(posixpath.join(base, suffix.lstrip('/')))
             if not file_path.startswith(base + '/'):
-                return Response(status=403)
+                continue
             try:
                 with default_storage.open(file_path) as f:
                     content = f.read()
@@ -373,10 +374,22 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         ``scorm_file_meta['path']`` is where ``studio_submit`` actually wrote
         the files; ``_file_storage_path()`` is derived from the block's current
         location and is the fallback.
+
+        The recorded value is only trusted when it is a string rooted at
+        ``SCORM_STORAGE_ROOT``. It is ``Scope.content`` and so round-trips
+        through OLX import, where ``XBlock._set_field_if_present`` matches on
+        field name without checking scope -- a crafted course could otherwise
+        set it to any prefix and have ``assets_proxy`` stream objects from it.
+        Every value written by ``studio_submit`` is ``_file_storage_path()``
+        output, so the check accepts all legitimate records.
         """
         recorded = (self.scorm_file_meta or {}).get('path')
         computed = self._file_storage_path()
-        paths = [posixpath.normpath(recorded)] if recorded else []
+        paths = []
+        if isinstance(recorded, str) and recorded:
+            recorded = posixpath.normpath(recorded)
+            if recorded.startswith(SCORM_STORAGE_ROOT + '/'):
+                paths.append(recorded)
         if computed not in paths:
             paths.append(computed)
         return paths
@@ -508,8 +521,8 @@ class ScormXBlock(XBlock, CompletableXBlockMixin):
         """
         Get file path of storage.
         """
-        path = "scormxblockmedia/{loc.org}/{loc.course}/{loc.block_id}".format(
-            loc=self.location,
+        path = "{root}/{loc.org}/{loc.course}/{loc.block_id}".format(
+            root=SCORM_STORAGE_ROOT, loc=self.location,
         )
         return path
 
